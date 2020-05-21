@@ -1,7 +1,11 @@
 project(dota-map-obscurator)
 
+set(CMAKE_CXX_FLAGS -Wno-sign-compare)
+
 set(dota-map-obscurator_SOURCES
-        dota-map-obscurator.c)
+        loader.cpp
+        dota-map-obscurator.cpp
+        utils/graphics-scope.cpp obscurator.cpp obscurator.hpp)
 
 add_library(dota-map-obscurator MODULE
         ${dota-map-obscurator_SOURCES})

@@ -2,9 +2,13 @@
 #define OBS_STUDIO_GLOBAL_HPP
 
 #include <algorithm>
+#include <cassert>
 #include <cstdint>
+#include <iomanip>
+#include <iostream>
 #include <map>
 #include <memory>
+#include <sstream>
 #include <vector>
 
 #ifdef _DEBUG

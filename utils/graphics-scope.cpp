@@ -1,12 +1,24 @@
 #include "graphics-scope.hpp"
 #include <obs-module.h>
 
-GraphicsScope::GraphicsScope()
+GraphicsScope::GraphicsScope( bool fake ) : m_fake( fake )
 {
-    obs_enter_graphics();
+    assert( m_count >= 0 );
+    if( m_count == 0 && !m_fake )
+    {
+        obs_enter_graphics();
+    }
+    ++m_count;
 }
 
 GraphicsScope::~GraphicsScope()
 {
-    obs_leave_graphics();
+    assert( m_count > 0 );
+    --m_count;
+    if( m_count == 0 && !m_fake )
+    {
+        obs_leave_graphics();
+    }
 }
+
+int GraphicsScope::m_count = 0;

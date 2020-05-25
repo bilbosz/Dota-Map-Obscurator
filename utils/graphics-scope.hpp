@@ -4,8 +4,11 @@
 class GraphicsScope
 {
 public:
-    GraphicsScope();
+    GraphicsScope( bool fake = false );
     ~GraphicsScope();
+private:
+    bool m_fake;
+    static int m_count;
 };
 
 

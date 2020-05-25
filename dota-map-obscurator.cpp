@@ -9,12 +9,13 @@ void DotaMapObscurator::RegisterSourceInfo()
     sourceInfo.type = OBS_SOURCE_TYPE_FILTER;
     sourceInfo.output_flags = OBS_SOURCE_VIDEO;
     sourceInfo.get_name = []( void* ) -> const char* { return obs_module_text( "DotaMapObscurator" ); };
-    sourceInfo.create = []( [[maybe_unused]] obs_data_t* settings, obs_source_t* source ) -> void* {
+    sourceInfo.create = []( obs_data_t* settings, obs_source_t* source ) -> void* {
+        obs_source_update( source, settings );
         return static_cast< void* >( new DotaMapObscurator( source ) );
     };
     sourceInfo.destroy = []( void* data ) -> void { delete static_cast< DotaMapObscurator* >( data ); };
-    sourceInfo.update = []( [[maybe_unused]] void* data, [[maybe_unused]] obs_data_t* settings ) -> void {
-
+    sourceInfo.update = []( void* data, obs_data_t* settings ) -> void {
+        return static_cast< DotaMapObscurator* >( data )->Reconfigure( settings );
     };
     sourceInfo.get_properties = []( void* data ) -> obs_properties_t* {
         return static_cast< DotaMapObscurator* >( data )->GetProperties();
@@ -30,7 +31,16 @@ void DotaMapObscurator::RegisterSourceInfo()
 
 obs_properties_t* DotaMapObscurator::GetProperties() const
 {
-    return obs_properties_create();
+    auto properties = obs_properties_create();
+
+    obs_properties_add_int_slider( properties, "param-1", "Parameter 1", 0, 255, 1 );
+    obs_properties_add_int_slider( properties, "param-2", "Parameter 2", 0, 255, 1 );
+    obs_properties_add_int_slider( properties, "param-3", "Parameter 3", 0, 255, 1 );
+    obs_properties_add_int_slider( properties, "param-4", "Parameter 4", 0, 255, 1 );
+    obs_properties_add_int_slider( properties, "param-5", "Parameter 5", 0, 255, 1 );
+    obs_properties_add_int_slider( properties, "param-6", "Parameter 6", 0, 255, 1 );
+
+    return properties;
 }
 
 DotaMapObscurator::DotaMapObscurator( obs_source_t* source )
@@ -46,10 +56,6 @@ DotaMapObscurator::~DotaMapObscurator()
     if( m_stageSurface )
     {
         gs_stagesurface_destroy( m_stageSurface );
-    }
-    if( m_textureBuffer )
-    {
-        gs_texture_destroy( m_textureBuffer );
     }
     if( m_mapTexture )
     {
@@ -81,16 +87,11 @@ void DotaMapObscurator::Init()
 
 void DotaMapObscurator::Update( [[maybe_unused]] float dt )
 {
+    m_time += dt;
     Init();
     if( !m_inited )
     {
         return;
-    }
-
-    //TODO Add change target size handling
-    if( m_mapTexture )
-    {
-        ProcessMapTexture();
     }
 
     auto newWidth = obs_source_get_base_width( m_target );
@@ -101,27 +102,25 @@ void DotaMapObscurator::Update( [[maybe_unused]] float dt )
         GraphicsScope scope;
         m_width = newWidth;
         m_height = newHeight;
-        m_mapSide = 325.0f * m_height / 1440.0f;
+        // TODO Test if it's true
+        m_mapBorder = std::round( m_height / 144.0f );
+        m_mapSide = std::round( ( 305.0f * m_height / 1440.0f ) + 2.0f * m_mapBorder );
         if( m_stageSurface )
         {
             gs_stagesurface_destroy( m_stageSurface );
-        }
-        if( m_textureBuffer )
-        {
-            gs_texture_destroy( m_textureBuffer );
         }
         if( m_mapTexture )
         {
             gs_texture_destroy( m_mapTexture );
         }
         m_mapTexture = gs_texture_create( m_mapSide, m_mapSide, GS_RGBA, 1, nullptr, GS_DYNAMIC );
-        m_textureBuffer = gs_texture_create( m_mapSide, m_mapSide, GS_RGBA, 1, nullptr, GS_DYNAMIC );
         m_stageSurface = gs_stagesurface_create( m_mapSide, m_mapSide, GS_RGBA );
     }
 }
 
 void DotaMapObscurator::Render()
 {
+    GraphicsScope scope( true );
     if( !m_inited )
     {
         obs_source_skip_video_filter( m_source );
@@ -152,23 +151,21 @@ void DotaMapObscurator::Render()
     }
 
     gs_texture_t* texture = gs_texrender_get_texture( m_render );
-    if( m_ready )
-    {
-        gs_copy_texture_region( m_textureBuffer, 0, 0, texture, 0, m_height - m_mapSide, m_mapSide, m_mapSide );
-        gs_copy_texture_region( texture, 0, m_height - m_mapSide, m_mapTexture, 0, 0, m_mapSide, m_mapSide );
-        gs_copy_texture( m_mapTexture, m_textureBuffer );
-        m_ready = false;
-    }
 
+    gs_copy_texture_region( m_mapTexture, 0, 0, texture, 0, m_height - m_mapSide, m_mapSide, m_mapSide );
+    ProcessMapTexture();
+    gs_copy_texture_region( texture, 0, m_height - m_mapSide, m_mapTexture, 0, 0, m_mapSide, m_mapSide );
+
+    gs_texture_t* final = m_mapTexture;
     gs_effect_t* effect = obs_get_base_effect( OBS_EFFECT_DEFAULT );
-    if( texture )
+    if( final )
     {
         gs_eparam_t* image = gs_effect_get_param_by_name( effect, "image" );
-        gs_effect_set_texture( image, texture );
+        gs_effect_set_texture( image, final );
 
         while( gs_effect_loop( effect, "Draw" ) )
         {
-            gs_draw_sprite( texture, 0, m_width, m_height );
+            gs_draw_sprite( final, 0, m_width, m_height );
         }
     }
 }
@@ -176,14 +173,34 @@ void DotaMapObscurator::Render()
 void DotaMapObscurator::ProcessMapTexture()
 {
     GraphicsScope scope;
-
     uint8_t* inData;
     uint32_t lineSize;
 
     gs_stage_texture( m_stageSurface, m_mapTexture );
     gs_stagesurface_map( m_stageSurface, &inData, &lineSize );
-    m_obscurator->Process( inData, m_mapSide, m_mapSide, lineSize );
+    m_obscurator->Process(
+        inData,
+        m_mapSide,
+        m_mapSide,
+        lineSize,
+        m_mapBorder,
+        m_time,
+        m_param1,
+        m_param2,
+        m_param3,
+        m_param4,
+        m_param5,
+        m_param6 );
     gs_stagesurface_unmap( m_stageSurface );
     gs_texture_set_image( m_mapTexture, m_obscurator->Output(), lineSize, false );
-    m_ready = true;
+}
+
+void DotaMapObscurator::Reconfigure( obs_data_t* settings )
+{
+    m_param1 = obs_data_get_int( settings, "param-1" );
+    m_param2 = obs_data_get_int( settings, "param-2" );
+    m_param3 = obs_data_get_int( settings, "param-3" );
+    m_param4 = obs_data_get_int( settings, "param-4" );
+    m_param5 = obs_data_get_int( settings, "param-5" );
+    m_param6 = obs_data_get_int( settings, "param-6" );
 }

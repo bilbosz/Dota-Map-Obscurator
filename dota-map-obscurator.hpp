@@ -15,6 +15,7 @@ public:
     void Init();
     void Update( float dt );
     void Render();
+    void Reconfigure( obs_data_t* settings );
 
 private:
     DotaMapObscurator( obs_source_t* source );
@@ -30,11 +31,17 @@ private:
     int32_t m_width = 0;
     int32_t m_height = 0;
     int32_t m_mapSide = 0;
+    uint32_t m_mapBorder = 0;
     gs_texture* m_mapTexture = nullptr;
-    gs_texture* m_textureBuffer = nullptr;
     gs_stage_surface* m_stageSurface = nullptr;
-    bool m_ready = false;
     std::unique_ptr< Obscurator > m_obscurator;
+    float m_time = 0.0f;
+    int32_t m_param1 = 0;
+    int32_t m_param2 = 0;
+    int32_t m_param3 = 0;
+    int32_t m_param4 = 0;
+    int32_t m_param5 = 0;
+    int32_t m_param6 = 0;
 };
 
 #endif //OBS_STUDIO_DOTA_MAP_OBSCURATOR_HPP
